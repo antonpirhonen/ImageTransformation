@@ -1,0 +1,49 @@
+object Blur extends AdjustableFilter( "Blur", 1, 5, 1 ) {
+  
+  def filter(image: Image) = {
+    
+    val data = image.data
+    val newFilterMatrix = Tools.createFilter(value, 1)
+    val border = newFilterMatrix.length/2
+    val paddedImageData = Tools.pad(data, border)
+    
+    val newImageData = Array.ofDim[Color](image.height, image.width)
+    
+    //Käy kuvan pikselit läpi ja blurraa ne
+    for {
+      y <- data.indices
+      x <- data(0).indices
+    } {
+     newImageData(y)(x) = Tools.multiplyWithFilter(x + border, y + border, new Image(paddedImageData), newFilterMatrix, newFilterMatrix.flatten.sum)
+    }
+    
+    new Image(newImageData)
+  }
+  
+}
+
+object Sharpen extends AdjustableFilter( "Sharpen", 1, 5, 1) {
+  
+  def filter(image: Image) = {
+    
+    val data = image.data
+    val newFilterMatrix = Tools.createFilter(value, -1)
+    val border = newFilterMatrix.length/2
+    val paddedImageData = Tools.pad(data, border)
+    val paddedImage = new Image(paddedImageData)
+    
+    val newImageData = image.data
+    
+    //muutetaan keskimmäinen nollasta eroavien alkioiden summan käänteisluvuksi
+    newFilterMatrix(border)(border) = -newFilterMatrix.flatten.sum
+    
+    for {
+      y <- newImageData.indices
+      x <- newImageData(0).indices
+    } {
+     newImageData(y)(x) = Tools.multiplyWithFilter(x + border, y + border, paddedImage, newFilterMatrix, newFilterMatrix.flatten.sum).clamp
+    }
+    
+    new Image(newImageData)
+  }
+}
