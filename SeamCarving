@@ -1,0 +1,167 @@
+object RemoveVerticalSeam extends BasicFilter {
+  val name = "Remove horizontal seam"
+
+  def filter(image: Image) = {
+    
+    val originalData = image.data
+
+    def toEnergy(image: Image): Image = {
+
+      val xGradientMatrix = Array(Array(0, 0, 0), Array(1, 0, -1), Array(0, 0, 0))
+      val yGradientMatrix = Array(Array(0, 1, 0), Array(0, 0, 0), Array(0, -1, 0))
+
+      val grayScalePicture = GrayScale.filter(image)
+      val grayData = grayScalePicture.data
+
+      //The image used for applying the gradient filters
+      val paddedGrayData = Tools.pad(grayData, 1)
+      val paddedGrayImage = new Image(paddedGrayData)
+
+      //The data that the loops apply changes to
+      val xGradientData = grayData
+      val yGradientData = grayData
+
+
+      //For loop that applies the gradient-matrices to paddedGrayData and saves the result to x/yGradientData
+      for {
+        y <- 0 until image.height
+        x <- 0 until image.width
+      } {
+        //x + 1, so that the filter only applies to the original part of image and not the padding around it
+        xGradientData(y)(x) = Tools.multiplyWithFilter(x + 1, y + 1, paddedGrayImage, xGradientMatrix, 1)
+        yGradientData(y)(x) = Tools.multiplyWithFilter(x + 1, y + 1, paddedGrayImage, yGradientMatrix, 1)
+      }
+
+      val energyImage = xGradientData
+      
+      
+      //For loop that adds the x- and y-gradients to each other to create the energy-image      
+      for {
+        y <- 0 until image.height
+        x <- 0 until image.width
+      } {
+        val xGradient = xGradientData(y)(x).r
+        val yGradient = yGradientData(y)(x).r
+        val energy = sqrt(pow(xGradient,2) + pow(yGradient,2)).toInt
+        energyImage(y)(x) = Color(energy,energy,energy).clamp
+      }
+      
+      new Image(energyImage)
+    }
+    
+    
+    
+    //calculates the value of a seam starting form the topIndex. Returns a tuple containing
+    //(topPixelIndex, totalEnergyOfTheSeam, Array with pixels to be removed). 
+    def calculateSeam(image: Image, topIndex: Int) = {
+      
+      val data = image.data
+      val height = data.length
+      val width = data(0).length
+
+      
+      //An utility method that chooses the next pixel from the next array
+      //line = the current line
+      def chooseNextPixel(previousIndex: Int, line: Array[Color]) = {
+        
+        //If the pixel is on the edge of the picture (0 or width) we have only 2 options to choose from.
+        //Match also does the choosing and returns a tuple with (index, energyValue).
+        val widthMinusOne = width - 1
+        
+        previousIndex match {
+          case 0               => if (line(0).r <= line(1).r) (0, line(0).r) else (1, line(1).r)
+          case `widthMinusOne` => if (line(width - 2).r <= line(width - 1).r) ( width - 2, line(width - 2).r ) else ( width - 1, line(width - 1).r )
+          case _               => {
+            val possibleNextPixelsColor = Array(line(previousIndex - 1), line(previousIndex), line(previousIndex + 1))
+            val lowestEnergyPixel = possibleNextPixelsColor.minBy(_.r)
+            (previousIndex - 1 + possibleNextPixelsColor.indexOf(lowestEnergyPixel), lowestEnergyPixel.r)
+          }
+        }
+      }
+      
+      //This loop goes through all of the lines choosing the lowest energy pixel from the next line, adds it to the
+      //seam's total energy and stores the last index on a variable. This essentially draws a seam starting from
+      //the topIndex to the bottom
+      var indicesToRemove = Array[Int]()
+      var lastIndex = topIndex
+      var seamTotalEnergy = data(0)(topIndex).r
+      
+      for (horizontalLineIndex <- 0 until height) {
+        val pixelValuePair = chooseNextPixel(lastIndex, data(horizontalLineIndex))
+        lastIndex = pixelValuePair._1
+        indicesToRemove = indicesToRemove ++ Array(lastIndex)
+        seamTotalEnergy += pixelValuePair._2
+      }
+      
+      
+      (topIndex, seamTotalEnergy, indicesToRemove)
+    }
+    
+    
+    /*
+    //Katsotaan toimiiko
+    var topEnergyRemove = calculateSeam(toEnergy(image), 100)
+    var indicesToRemove = topEnergyRemove._3
+    val dataWithSeam = image.data
+    
+    //värjätään pikselit punaisiksi
+    for (horizontalLine <- 0 until image.data.length) {
+      dataWithSeam(horizontalLine)(indicesToRemove(horizontalLine)) = Color(255,0,0)
+    }
+    
+    //new Image(dataWithSeam)*/
+    
+    
+    
+    
+    //In the last step we construct a new image data by removing the pixels found by calculateSeam
+    //First we need to find the seam with lowest energy using a for loop. Then we will delete the seam
+    //from the picture.
+    def removeSeam(image: Image): Image = {
+      
+      val data = image.data
+      val height = data.length
+      val width = data(0).length
+      var allSeams = Array[(Int, Int, Array[Int])]()
+      val newImageData = Array.ofDim[Color](height, width - 1)
+      
+      //find all the seams
+      for (topIndex <- 0 until width) {
+        allSeams = allSeams.+:(calculateSeam(image, topIndex))
+      }
+      
+      //From all the seams chooses the one with lowest energy
+      val lowestEnergySeam = allSeams.minBy(_._2)
+      val indicesToRemove = lowestEnergySeam._3
+      
+      //deletes the pixels on the seam
+      for (horizontalLine <- 0 until height) {
+        newImageData(horizontalLine) = originalData(horizontalLine).take(indicesToRemove(horizontalLine)) ++ originalData(horizontalLine).drop(indicesToRemove(horizontalLine) + 1)
+      }
+      
+      println("Image width: " + newImageData(0).length)
+      new Image(newImageData)
+    }
+    
+    //new Image(dataWithSeam)
+    //toEnergy(image)
+    removeSeam(toEnergy(image))
+  }
+}
+
+/**
+ * Removes multiple vertical seams.
+ */
+object RemoveVerticalSeams extends
+    AdjustableFilter ( "Remove vertical seams", minimum = 0, maximum = 10, base= 0) {
+  
+  def filter(image: Image) = {
+    val repeats = value
+    
+    var current = image
+    for (_ <- 1 to repeats)
+      current = RemoveVerticalSeam.filter(current)
+  
+    current
+  }
+}
