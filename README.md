@@ -1,0 +1,2 @@
+# ImageTransformation
+A project in which we manipulated the picture in different ways. I'll add only the seam carving code, which removes a vertical seam with lowest energy from the picture. For info see https://en.wikipedia.org/wiki/Seam_carving. For redesigning purposes I should use a class to represent a seam instead of a tuple. I should also redesign the calculateSeam-method to function better.
